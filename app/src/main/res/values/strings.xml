@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">PathTracer</string>
+    <string name="google_map_api_key">AIzaSyDFNqx30Y2u4gowURkqy56GPOH_e7zdGD4</string>
+    <string name="title_activity_maps">Map</string>
+</resources>
