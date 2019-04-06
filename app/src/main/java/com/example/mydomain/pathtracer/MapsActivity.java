@@ -6,6 +6,7 @@ import android.app.Dialog;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
+import android.location.LocationListener;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
@@ -35,7 +36,7 @@ import com.google.android.gms.tasks.Task;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener {
 
     private GoogleMap mMap;
     private static final String TAG = "MapsActivity";
@@ -51,19 +52,22 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
-        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
-        getLocationPermission();
 
         final Button btn  = findViewById(R.id.overlay_btn);
+        AttachStartListener(btn);
+
+    }
+
+    private void AttachStartListener(final Button btn) {
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 TextView tv = findViewById(R.id.overlay);
                 tv.setVisibility(View.INVISIBLE);
                 btn.setVisibility(View.INVISIBLE);
+                getLocationPermission();
             }
         });
-
     }
 
     private void getLocationPermission() {
@@ -81,6 +85,34 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             ActivityCompat.requestPermissions(this, permissions,
                     LOC_PERMISSION_ACCESS_CODE);
         }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        Log.d(TAG, "onRequestPermissionsResult: executing...");
+        mLocationPermissionGranted = false;
+        switch (requestCode) {
+            case LOC_PERMISSION_ACCESS_CODE:
+                if (grantResults.length > 0) {
+                    for (int i = 0; i < grantResults.length; i++) {
+                        if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                            mLocationPermissionGranted = false;
+                            Log.d(TAG, "onRequestPermissionsResult: Permission failed");
+                            return;
+                        }
+                    }
+                    mLocationPermissionGranted = true;
+                    Log.d(TAG, "onRequestPermissionsResult: Permission granted");
+                    initMap();
+                }
+        }
+    }
+
+    private void initMap() {
+        Log.d(TAG, "initMap: initializing map...");
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
+                .findFragmentById(R.id.map);
+        mapFragment.getMapAsync(MapsActivity.this);
     }
 
     private void getDeviceLocation() {
@@ -134,34 +166,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
-    private void initMap() {
-        Log.d(TAG, "initMap: initializing map...");
-        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-                .findFragmentById(R.id.map);
-        mapFragment.getMapAsync(MapsActivity.this);
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        Log.d(TAG, "onRequestPermissionsResult: executing...");
-        mLocationPermissionGranted = false;
-        switch (requestCode) {
-            case LOC_PERMISSION_ACCESS_CODE:
-                if (grantResults.length > 0) {
-                    for (int i = 0; i < grantResults.length; i++) {
-                        if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
-                            mLocationPermissionGranted = false;
-                            Log.d(TAG, "onRequestPermissionsResult: Permission failed");
-                            return;
-                        }
-                    }
-                    mLocationPermissionGranted = true;
-                    Log.d(TAG, "onRequestPermissionsResult: Permission granted");
-                    initMap();
-                }
-        }
-    }
-
     @Override
     public void onMapReady(GoogleMap googleMap) {
         Log.d(TAG, "onMapReady: map ready");
@@ -186,5 +190,27 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private void moveCamera(LatLng latlng, float zoom){
         Log.d(TAG, "moveCamera: moving camera to lat:"+ latlng.latitude +", lng:" + latlng.longitude);
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latlng, zoom));
+    }
+
+    //LocationListener Methods
+
+    @Override
+    public void onLocationChanged(Location location) {
+        //TODO: implement method
+    }
+
+    @Override
+    public void onStatusChanged(String s, int i, Bundle bundle) {
+        //TODO: implement method
+    }
+
+    @Override
+    public void onProviderEnabled(String s) {
+        //TODO: implement method
+    }
+
+    @Override
+    public void onProviderDisabled(String s) {
+        //TODO: implement method
     }
 }
