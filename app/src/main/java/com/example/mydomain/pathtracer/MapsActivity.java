@@ -1,12 +1,16 @@
 package com.example.mydomain.pathtracer;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.AsyncTask;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
@@ -33,10 +37,17 @@ import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
     private GoogleMap mMap;
     private static final String TAG = "MapsActivity";
@@ -44,9 +55,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private static final String COARSE_LOCATION = Manifest.permission.ACCESS_COARSE_LOCATION;
     private static final int LOC_PERMISSION_ACCESS_CODE = 1234;
     private static final float DEFAULT_ZOOM = 16f;
+    private static final float CLOSING_DISTANCE = 20;
 
     private boolean mLocationPermissionGranted = false;
     private FusedLocationProviderClient mFusedLocationProviderClient;
+    private LocationManager locationManager;
+    private LocationListener locationListener;
+
+    private List<LatLng> latLngs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -121,6 +137,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         try {
             if (mLocationPermissionGranted) {
                 Task location = mFusedLocationProviderClient.getLastLocation();
+                locationManager = (LocationManager)this.getSystemService(Context.LOCATION_SERVICE);
+
                 location.addOnCompleteListener(new OnCompleteListener() {
                     @Override
                     public void onComplete(@NonNull Task task) {
@@ -130,29 +148,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             moveCamera(new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude()), DEFAULT_ZOOM);
                             double currentLat = currentLocation.getLatitude();
                             double currentLong = currentLocation.getLongitude();
+                            initLocationUpdate(currentLat, currentLong);
 
 
-                            //start of polyline trial
-                            List<LatLng> latLngs = new ArrayList<LatLng>();
+                            latLngs = new ArrayList<LatLng>();
                             latLngs.add(
                                     new LatLng(currentLat,currentLong)
                             );
-                            latLngs.add(
-                                    new LatLng(currentLat-0.1,currentLong-0.1)
-                            );
-                            latLngs.add(
-                                    new LatLng(currentLat + 0.1,currentLong-0.1)
-                            );
-                            Polyline polyline = mMap.addPolyline(new PolylineOptions().addAll(latLngs));
-                            polyline.setColor(Color.BLUE);
-                            polyline.setClickable(true);
 
-                            Polygon polygon = mMap.addPolygon(new PolygonOptions().addAll(latLngs));
-                            polygon.setStrokeColor(Color.RED);
-                            polygon.setFillColor(ContextCompat.getColor(getApplicationContext(),R.color.colorPrimary));
-                            polygon.setStrokeWidth(10);
-                            polygon.setGeodesic(true);
-                            //end polyline trial
                         } else {
                             Log.d(TAG, "onComplete: current location NULL");
                             Toast.makeText(MapsActivity.this, "Unable to get current location of device", Toast.LENGTH_SHORT).show();
@@ -192,25 +195,174 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latlng, zoom));
     }
 
-    //LocationListener Methods
+    private void initLocationUpdate(double old_latitude, double old_longitude){
+        final double oLat = old_latitude;
+        final double oLong = old_longitude;
+        final String key = "AIzaSyDFNqx30Y2u4gowURkqy56GPOH_e7zdGD4";
+        locationListener = new LocationListener() {
+            @SuppressLint("StaticFieldLeak")
+            @Override
+            public void onLocationChanged(Location location) {
 
-    @Override
-    public void onLocationChanged(Location location) {
-        //TODO: implement method
+                final double changedLatitude = location.getLatitude();
+                final double changedlongitude = location.getLongitude();
+
+
+                Log.d(TAG, "onLocationChanged: "+ "New Latitude: "+ changedLatitude + "New Longitude: "+changedlongitude);
+
+                final String stringUrl = "https://roads.googleapis.com/v1/snapToRoads?path=" + oLat+ ","
+                        + oLong + "|" + changedLatitude + "," + changedlongitude +
+                        "&interpolate=true&key=" + key;
+
+                new AsyncTask<String, Void, JSONObject>(){
+                    boolean isRoadsAPIAvail = true;
+
+                    @Override
+                    protected JSONObject doInBackground(String... urls) {
+                        return JSONParser.getJSONFromUrl(stringUrl);
+                    };
+
+                    @Override
+                    protected void onPostExecute(JSONObject jsonObj) {
+                        try{
+                            if(jsonObj == null || jsonObj.has("error")){
+                                isRoadsAPIAvail = false;
+                            }
+                            else{
+                                Log.d(TAG, "onPostExecute: isRoadsAPIAvail==true");
+                                drawPolylinewithRoadAPI(jsonObj);
+                            }
+                        }catch (JSONException e){
+                            Log.e(TAG, "onPostExecute: JsonException" + e.getMessage() );
+                        }
+                        if(!isRoadsAPIAvail){
+                            Log.d(TAG, "onPostExecute: isRoadsAPIAvail==false");
+                            Toast.makeText(MapsActivity.this, "RoadsAPI not avail", Toast.LENGTH_SHORT).show();
+                            drawGreatCirclePolyline(changedLatitude, changedlongitude);
+                        }
+
+                        Log.d(TAG, "onPostExecute: latLngs (End)::" + latLngs);
+                        if(latLngs.size()> 2 && distanceBetweenFirstAndLastPoint(latLngs)<= CLOSING_DISTANCE){
+                            drawPolygon(latLngs);
+                            addDistanceMarker(latLngs);
+                            displayRestartButton();
+                        };
+                    }
+                }.execute(stringUrl);
+            }
+            @Override
+            public void onStatusChanged(String s, int i, Bundle bundle) {
+                //Not used
+            }
+            @Override
+            public void onProviderEnabled(String s) {
+                //Not used
+            }
+            @Override
+            public void onProviderDisabled(String s) {
+                //Not used
+            }
+        };
+
+        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+                2000,
+                10,
+                locationListener);
+
     }
 
-    @Override
-    public void onStatusChanged(String s, int i, Bundle bundle) {
-        //TODO: implement method
+    private void drawPolylinewithRoadAPI(JSONObject jsonObj) throws JSONException {
+        JSONArray snappedPointsArray = jsonObj.getJSONArray("snappedPoints");
+        Log.d(TAG, "onPostExecute: "+snappedPointsArray.toString());
+        for(int i =0 ; i < snappedPointsArray.length(); i++){
+            JSONObject location = snappedPointsArray.getJSONObject(i).getJSONObject("location");
+            if(latLngs.size() >0 ){
+                double snappedLat = location.getDouble("latitude");
+                double snappedLong = location.getDouble("longitude");
+
+                Log.d(TAG, "onPostExecute: added Latlngs ArrayList::" + latLngs);
+                Polyline newLine = mMap.addPolyline(
+                        new PolylineOptions()
+                                .add( latLngs.get(latLngs.size()-1),
+                                        new LatLng(snappedLat, snappedLong))
+                                .width(10)
+                                .color(Color.BLUE)
+                );
+                latLngs.add(
+                        new LatLng(snappedLat,snappedLong)
+                );
+                newLine.setClickable(true);
+            }
+        }
     }
 
-    @Override
-    public void onProviderEnabled(String s) {
-        //TODO: implement method
+    private void drawGreatCirclePolyline(double changedLatitude, double changedlongitude) {
+        Polyline newLine = mMap.addPolyline(
+                new PolylineOptions()
+                        .add( latLngs.get(latLngs.size()-1),
+                                new LatLng(changedLatitude, changedlongitude))
+                        .width(10)
+                        .color(Color.BLUE)
+        );
+        newLine.setClickable(true);
+        latLngs.add(
+                new LatLng(changedLatitude,changedlongitude)
+        );
     }
 
-    @Override
-    public void onProviderDisabled(String s) {
-        //TODO: implement method
+    private void drawPolygon(List<LatLng> latLngs) {
+        mMap.clear();
+        Polygon polygon = mMap.addPolygon(new PolygonOptions().addAll(latLngs));
+        polygon.setStrokeColor(Color.RED);
+        polygon.setFillColor(ContextCompat.getColor(getApplicationContext(),R.color.colorPrimary));
+        polygon.setStrokeWidth(10);
+        polygon.setGeodesic(true);
     }
+
+    private float distanceBetweenFirstAndLastPoint(List<LatLng> latlngs){
+        float[] results = new float[1];
+        Location.distanceBetween(
+                latlngs.get(0).latitude, latlngs.get(0).longitude,
+                latlngs.get(latlngs.size()-1).latitude, latlngs.get(latlngs.size()-1).longitude,
+                results);
+        return results[0];
+    }
+
+    private float totalDistanceInPolygon(List<LatLng> latLngs){
+        float total = 0;
+        for(int i=1; i< latLngs.size(); i++){
+            float[] results = new float[1];
+            Location.distanceBetween(
+                    latLngs.get(i).latitude, latLngs.get(i).longitude,
+                    latLngs.get(i-1).latitude, latLngs.get(i-1).longitude,
+                    results
+            );
+            total+=results[0];
+        }
+        return total;
+    }
+
+    private void addDistanceMarker(List<LatLng> latLngs) {
+        float totalDistance = totalDistanceInPolygon(latLngs);
+        mMap.addMarker(new MarkerOptions()
+                .position(latLngs.get(latLngs.size()-1))
+                .title(String.format("Total Distance: %f m",totalDistance))
+                .visible(true)).showInfoWindow();
+    }
+
+    private void displayRestartButton() {
+        Button restartBtn  = findViewById(R.id.overlay_btn);
+        restartBtn.setText("Restart");
+        restartBtn.setVisibility(View.VISIBLE);
+        restartBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                mMap.clear();
+                view.setVisibility(View.GONE);
+                latLngs.clear();
+            }
+        });
+    }
+
+
 }

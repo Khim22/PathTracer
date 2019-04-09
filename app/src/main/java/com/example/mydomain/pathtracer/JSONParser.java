@@ -12,6 +12,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+import javax.net.ssl.HttpsURLConnection;
+
 public class JSONParser {
     static String readStream(InputStream is) {
         StringBuilder sb = new StringBuilder();
@@ -34,7 +36,7 @@ public class JSONParser {
         InputStream is = null;
         try {
             URL u = new URL(url);
-            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+            HttpsURLConnection conn = (HttpsURLConnection) u.openConnection();
             conn.setRequestMethod("GET");
             conn.connect();
             is = conn.getInputStream();
