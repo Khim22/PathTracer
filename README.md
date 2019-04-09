@@ -1,4 +1,4 @@
-# PathTracer
+# Polygon Project
 Tracing Path on Google Map
 
 * Limited tracing of path using Google RoadsAPI SnapToRoad
