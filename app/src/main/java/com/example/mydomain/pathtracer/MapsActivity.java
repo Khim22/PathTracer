@@ -49,14 +49,16 @@ import java.util.Map;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
-    private GoogleMap mMap;
+
     private static final String TAG = "MapsActivity";
     private static final String FINE_LOCATION = Manifest.permission.ACCESS_FINE_LOCATION;
     private static final String COARSE_LOCATION = Manifest.permission.ACCESS_COARSE_LOCATION;
     private static final int LOC_PERMISSION_ACCESS_CODE = 1234;
     private static final float DEFAULT_ZOOM = 16f;
     private static final float CLOSING_DISTANCE = 20;
+    private static final String API_KEY = "AIzaSyDFNqx30Y2u4gowURkqy56GPOH_e7zdGD4";
 
+    private GoogleMap mMap;
     private boolean mLocationPermissionGranted = false;
     private FusedLocationProviderClient mFusedLocationProviderClient;
     private LocationManager locationManager;
@@ -74,13 +76,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
-    private void AttachStartListener(final Button btn) {
+    private void AttachStartListener(Button btn) {
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 TextView tv = findViewById(R.id.overlay);
                 tv.setVisibility(View.INVISIBLE);
-                btn.setVisibility(View.INVISIBLE);
+                view.setVisibility(View.INVISIBLE);
                 getLocationPermission();
             }
         });
@@ -145,11 +147,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         if (task.isSuccessful()) {
                             Log.d(TAG, "onComplete: Location Found");
                             Location currentLocation = (Location) task.getResult();
-                            moveCamera(new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude()), DEFAULT_ZOOM);
                             double currentLat = currentLocation.getLatitude();
-                            double currentLong = currentLocation.getLongitude();
-                            initLocationUpdate(currentLat, currentLong);
+                            double  currentLong = currentLocation.getLongitude();
 
+                            moveCamera(new LatLng(currentLat, currentLong), DEFAULT_ZOOM);
+                            initLocationUpdate(currentLat, currentLong);
 
                             latLngs = new ArrayList<LatLng>();
                             latLngs.add(
@@ -198,57 +200,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private void initLocationUpdate(double old_latitude, double old_longitude){
         final double oLat = old_latitude;
         final double oLong = old_longitude;
-        final String key = "AIzaSyDFNqx30Y2u4gowURkqy56GPOH_e7zdGD4";
+
         locationListener = new LocationListener() {
             @SuppressLint("StaticFieldLeak")
             @Override
             public void onLocationChanged(Location location) {
-
-                final double changedLatitude = location.getLatitude();
-                final double changedlongitude = location.getLongitude();
-
+                double changedLatitude = location.getLatitude();
+                double changedlongitude = location.getLongitude();
 
                 Log.d(TAG, "onLocationChanged: "+ "New Latitude: "+ changedLatitude + "New Longitude: "+changedlongitude);
-
-                final String stringUrl = "https://roads.googleapis.com/v1/snapToRoads?path=" + oLat+ ","
-                        + oLong + "|" + changedLatitude + "," + changedlongitude +
-                        "&interpolate=true&key=" + key;
-
-                new AsyncTask<String, Void, JSONObject>(){
-                    boolean isRoadsAPIAvail = true;
-
-                    @Override
-                    protected JSONObject doInBackground(String... urls) {
-                        return JSONParser.getJSONFromUrl(stringUrl);
-                    };
-
-                    @Override
-                    protected void onPostExecute(JSONObject jsonObj) {
-                        try{
-                            if(jsonObj == null || jsonObj.has("error")){
-                                isRoadsAPIAvail = false;
-                            }
-                            else{
-                                Log.d(TAG, "onPostExecute: isRoadsAPIAvail==true");
-                                drawPolylinewithRoadAPI(jsonObj);
-                            }
-                        }catch (JSONException e){
-                            Log.e(TAG, "onPostExecute: JsonException" + e.getMessage() );
-                        }
-                        if(!isRoadsAPIAvail){
-                            Log.d(TAG, "onPostExecute: isRoadsAPIAvail==false");
-                            Toast.makeText(MapsActivity.this, "RoadsAPI not avail", Toast.LENGTH_SHORT).show();
-                            drawGreatCirclePolyline(changedLatitude, changedlongitude);
-                        }
-
-                        Log.d(TAG, "onPostExecute: latLngs (End)::" + latLngs);
-                        if(latLngs.size()> 2 && distanceBetweenFirstAndLastPoint(latLngs)<= CLOSING_DISTANCE){
-                            drawPolygon(latLngs);
-                            addDistanceMarker(latLngs);
-                            displayRestartButton();
-                        };
-                    }
-                }.execute(stringUrl);
+                String roadAPIURL = String.format("https://roads.googleapis.com/v1/snapToRoads?path=%f,%f|%f,%f&interpolate=true&key=%s",
+                                    oLat,
+                                    oLong,
+                                    changedLatitude,
+                                    changedlongitude,
+                                    API_KEY);
+                LocationChangeAsyncTask asyncUpdate =  new LocationChangeAsyncTask();
+                asyncUpdate.execute(roadAPIURL, location);
             }
             @Override
             public void onStatusChanged(String s, int i, Bundle bundle) {
@@ -269,6 +237,50 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 10,
                 locationListener);
 
+    }
+
+    public class LocationChangeAsyncTask extends AsyncTask<Object, Void, JSONObject>{
+        boolean isRoadsAPIAvail = true;
+        double changedLatitude = 0;
+        double changedlongitude = 0;
+
+        @Override
+        protected JSONObject doInBackground(Object... objects) {
+            changedLatitude = ((Location)objects[1]).getLatitude();
+            changedlongitude = ((Location)objects[1]).getLongitude();
+            return JSONParser.getJSONFromUrl((String)objects[0]);
+        }
+        @Override
+        protected void onPostExecute(JSONObject jsonObj) {
+            try{
+                if(jsonObj == null || jsonObj.has("error")){
+                    isRoadsAPIAvail = false;
+                }
+                else{
+                    Log.d(TAG, "onPostExecute: isRoadsAPIAvail==true");
+                    drawPolylinewithRoadAPI(jsonObj);
+                }
+            }catch (JSONException e){
+                Log.e(TAG, "onPostExecute: JsonException" + e.getMessage() );
+            }
+
+            if(!isRoadsAPIAvail){
+                Log.d(TAG, "onPostExecute: isRoadsAPIAvail==false");
+                Toast.makeText(MapsActivity.this, "RoadsAPI not available", Toast.LENGTH_SHORT).show();
+                drawGreatCirclePolyline(changedLatitude, changedlongitude);
+            }
+
+            Log.d(TAG, "onPostExecute: latLngs (End)::" + latLngs);
+            if(isDeviceBackToFirstLocation(latLngs)){
+                drawPolygon(latLngs);
+                addDistanceMarker(latLngs);
+                displayRestartButton();
+            };
+        }
+    }
+
+    private boolean isDeviceBackToFirstLocation(List<LatLng> latLngs) {
+        return latLngs.size()> 2 && distanceBetweenFirstAndLastPoint(latLngs)<= CLOSING_DISTANCE;
     }
 
     private void drawPolylinewithRoadAPI(JSONObject jsonObj) throws JSONException {
@@ -354,14 +366,20 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         Button restartBtn  = findViewById(R.id.overlay_btn);
         restartBtn.setText("Restart");
         restartBtn.setVisibility(View.VISIBLE);
+        Log.d(TAG, "displayRestartButton: Make button visible");
+
         restartBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 mMap.clear();
                 view.setVisibility(View.GONE);
                 latLngs.clear();
+                Log.d(TAG, "displayRestartButton:onClick:: reset markers and List ");
+                getDeviceLocation();
             }
         });
+
+
     }
 
 
