@@ -209,7 +209,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 double changedlongitude = location.getLongitude();
 
                 Log.d(TAG, "onLocationChanged: "+ "New Latitude: "+ changedLatitude + "New Longitude: "+changedlongitude);
-                String roadAPIURL = String.format("https://roads.googleapis.com/v1/snapToRoads?path=%f,%f|%f,%f&interpolate=true&key=%s",
+                String roadAPIURL = String.format("https://roads.googleapis.com/v1/snapToRoads?path=%17f,%17f|%17f,%17f&interpolate=true&key=%s",
                                     oLat,
                                     oLong,
                                     changedLatitude,
